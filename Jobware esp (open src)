@@ -8,8 +8,12 @@ local LocalPlayer = Players.LocalPlayer
 local Settings = {
     MaxDist = 5000,
     TeamCheck = false,
+    
     BaseTextSize = 13,
-    BaseDotSize = 5,
+    
+    -- Je höher dieser Wert, desto größer der Punkt
+    DotFactor = 250, 
+    
     MinScale = 0.5,
     MaxScale = 1.0,
     ScalingRef = 80,
@@ -110,9 +114,13 @@ local function UpdateESP(plr)
     
     if onScreen and head then
         local hPos = Camera:WorldToViewportPoint(head.Position)
+        
+        -- Berechnung für 3D-Effekt (wird kleiner mit Distanz)
+        local dotRadius = Settings.DotFactor / math.max(dist, 10)
+        
         D.Dot.Visible = true
         D.Dot.Position = Vector2.new(hPos.X, hPos.Y)
-        D.Dot.Radius = Settings.BaseDotSize * scaleFactor
+        D.Dot.Radius = math.clamp(dotRadius, 2, 25) -- Begrenzung Min/Max
         D.Dot.Color = Settings.DotColor
         D.Dot.Filled = true
         D.Dot.Thickness = 1
