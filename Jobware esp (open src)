@@ -1,0 +1,188 @@
+-- Jobware esp
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+local Settings = {
+    MaxDist = 5000,
+    TeamCheck = false,
+    BaseTextSize = 13,
+    BaseDotSize = 5,
+    MinScale = 0.5,
+    MaxScale = 1.0,
+    ScalingRef = 80,
+    LineThickness = 1.5,
+    TextColor = Color3.fromRGB(255, 255, 255),
+    DotColor = Color3.fromRGB(255, 0, 0),
+    SkeletonColor = Color3.fromRGB(230, 230, 230),
+    TracerColor = Color3.fromRGB(255, 255, 255)
+}
+
+local Cache = {}
+
+local function NewDrawing(Type)
+    if Drawing and Drawing.new then
+        local p, obj = pcall(function() return Drawing.new(Type) end)
+        if p then 
+            obj.Visible = false
+            return obj 
+        end
+    end
+    return nil
+end
+
+local function UpdateESP(plr)
+    if not plr.Character then return end
+    
+    local char = plr.Character
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChild("Humanoid")
+    local head = char:FindFirstChild("Head")
+    
+    local isTeam = Settings.TeamCheck and plr.Team == LocalPlayer.Team
+    
+    if not hrp or not hum or hum.Health <= 0 or isTeam then
+        if Cache[plr] then 
+            for _, d in pairs(Cache[plr]) do 
+                if type(d) == "table" then 
+                    for _, l in pairs(d) do l.Visible = false end
+                else
+                    d.Visible = false 
+                end
+            end 
+        end
+        return
+    end
+    
+    local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+    
+    if dist > Settings.MaxDist then
+        if Cache[plr] then 
+            for _, d in pairs(Cache[plr]) do 
+                if type(d) == "table" then for _, l in pairs(d) do l.Visible = false end
+                else d.Visible = false end
+            end 
+        end
+        return
+    end
+
+    local vec, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+    local rawScale = Settings.ScalingRef / math.max(dist, 1)
+    local scaleFactor = math.clamp(rawScale, Settings.MinScale, Settings.MaxScale)
+
+    if not Cache[plr] then
+        Cache[plr] = {
+            Name = NewDrawing("Text"),
+            Dist = NewDrawing("Text"),
+            Dot = NewDrawing("Circle"),
+            Tracer = NewDrawing("Line"),
+            Skeleton = {}
+        }
+    end
+    
+    local D = Cache[plr]
+    
+    if onScreen then
+        local headVec = Camera:WorldToViewportPoint(head and head.Position or hrp.Position + Vector3.new(0, 2, 0))
+        local yOffset = 25 * scaleFactor 
+        
+        D.Name.Visible = true
+        D.Name.Text = plr.Name
+        D.Name.Size = Settings.BaseTextSize * scaleFactor
+        D.Name.Center = true
+        D.Name.Outline = true
+        D.Name.Color = Settings.TextColor
+        D.Name.Position = Vector2.new(headVec.X, headVec.Y - yOffset)
+        
+        D.Dist.Visible = true
+        D.Dist.Text = math.floor(dist) .. "m"
+        D.Dist.Size = (Settings.BaseTextSize - 2) * scaleFactor
+        D.Dist.Center = true
+        D.Dist.Outline = true
+        D.Dist.Color = Settings.TextColor
+        D.Dist.Position = Vector2.new(headVec.X, headVec.Y - (yOffset * 0.6))
+    else
+        D.Name.Visible = false
+        D.Dist.Visible = false
+    end
+    
+    if onScreen and head then
+        local hPos = Camera:WorldToViewportPoint(head.Position)
+        D.Dot.Visible = true
+        D.Dot.Position = Vector2.new(hPos.X, hPos.Y)
+        D.Dot.Radius = Settings.BaseDotSize * scaleFactor
+        D.Dot.Color = Settings.DotColor
+        D.Dot.Filled = true
+        D.Dot.Thickness = 1
+    else
+        D.Dot.Visible = false
+    end
+    
+    if onScreen then
+        D.Tracer.Visible = true
+        D.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y - 50)
+        D.Tracer.To = Vector2.new(vec.X, vec.Y)
+        D.Tracer.Color = Settings.TracerColor
+        D.Tracer.Thickness = Settings.LineThickness
+    else
+        D.Tracer.Visible = false
+    end
+    
+    if onScreen then
+        local joints = {
+            {"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"}, {"LowerTorso", "LeftUpperLeg"}, 
+            {"LeftUpperLeg", "LeftFoot"}, {"LowerTorso", "RightUpperLeg"}, {"RightUpperLeg", "RightFoot"},
+            {"UpperTorso", "LeftUpperArm"}, {"LeftUpperArm", "LeftHand"}, {"UpperTorso", "RightUpperArm"}, 
+            {"RightUpperArm", "RightHand"}
+        }
+        if hum.RigType == Enum.HumanoidRigType.R6 then
+            joints = {{"Head","Torso"}, {"Torso","Left Arm"}, {"Torso","Right Arm"}, {"Torso","Left Leg"}, {"Torso","Right Leg"}}
+        end
+        
+        for i, pair in pairs(joints) do
+            local p1 = char:FindFirstChild(pair[1])
+            local p2 = char:FindFirstChild(pair[2])
+            
+            if p1 and p2 then
+                if not D.Skeleton[i] then D.Skeleton[i] = NewDrawing("Line") end
+                local line = D.Skeleton[i]
+                
+                local v1, vis1 = Camera:WorldToViewportPoint(p1.Position)
+                local v2, vis2 = Camera:WorldToViewportPoint(p2.Position)
+                
+                if vis1 and vis2 then
+                    line.Visible = true
+                    line.From = Vector2.new(v1.X, v1.Y)
+                    line.To = Vector2.new(v2.X, v2.Y)
+                    line.Color = Settings.SkeletonColor
+                    line.Thickness = Settings.LineThickness
+                else
+                    line.Visible = false
+                end
+            end
+        end
+    else
+        for _, l in pairs(D.Skeleton) do l.Visible = false end
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            pcall(function() UpdateESP(plr) end)
+        end
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(plr)
+    if Cache[plr] then
+        Cache[plr].Name:Remove()
+        Cache[plr].Dist:Remove()
+        Cache[plr].Dot:Remove()
+        Cache[plr].Tracer:Remove()
+        for _, l in pairs(Cache[plr].Skeleton) do l:Remove() end
+        Cache[plr] = nil
+    end
+end)
